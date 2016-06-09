@@ -707,8 +707,9 @@ CV_fldattr = BitStruct("fldattr",
         _default_  = Pass,
     ),
 
-    Padding(7),
+    Padding(6),
     Flag("compgenx"),
+    Flag("sealed"),
 )
 
 CV_call = Enum(ULInt8("call_conv"),
@@ -756,6 +757,24 @@ CV_property = BitStruct("prop",
     Flag("scoped"),
 )
 
+LF_NUMERIC = 0x8000
+
+def extract_numeric(name):
+    return Embed(Struct("_value",
+        ULInt16("_value_type"),
+        IfThenElse(name, lambda ctx: ctx._value_type < LF_NUMERIC,
+            Value("val", lambda ctx: ctx._value_type),
+            Switch("val", lambda ctx: leaf_type._decode(ctx._value_type, {}),
+                {
+                    "LF_CHAR": SLInt8("value"),
+                    "LF_SHORT": SLInt16("value"),
+                    "LF_USHORT": ULInt16("value"),
+                    "LF_LONG": SLInt32("value"),
+                    "LF_ULONG": ULInt32("value"),
+                },
+            ),
+        ),
+    ))
 
 def val(name):
     return Struct("value",
@@ -804,34 +823,24 @@ subStruct = Struct("substructs",
                 ULInt32("index"),
                 ULInt16("offset"),
                 PascalString("name"),
-                Peek(ULInt8("_pad")),
-                PadAlign,
             ),
             "LF_MEMBER": Struct("lfMember",
                 CV_fldattr,
                 ULInt32("index"),
                 val("offset"),
-                Peek(ULInt8("_pad")),
-                PadAlign,
             ),
             "LF_ENUMERATE": Struct("lfEnumerate",
                 CV_fldattr,
                 val("enum_value"),
-                Peek(ULInt8("_pad")),
-                PadAlign,
             ),
             "LF_BCLASS": Struct("lfBClass",
                 CV_fldattr,
                 ULInt32("index"),
-                val("offset"),
-                Peek(ULInt8("_pad")),
-                PadAlign,
+                extract_numeric("offset"),
             ),
             "LF_VFUNCTAB": Struct("lfVFuncTab",
                 Padding(2),
                 ULInt32("type"),
-                Peek(ULInt8("_pad")),
-                PadAlign,
             ),
             "LF_ONEMETHOD": Struct("lfOneMethod",
                 CV_fldattr,
@@ -849,15 +858,11 @@ subStruct = Struct("substructs",
                     },
                     default = CString("str_data", encoding="utf8"),
                 ),
-                Peek(ULInt8("_pad")),
-                PadAlign,
             ),
             "LF_METHOD": Struct("lfMethod",
                 ULInt16("count"),
                 ULInt32("mlist"),
                 CString("name", encoding="utf8"),
-                Peek(ULInt8("_pad")),
-                PadAlign,
             ),
             "LF_NESTTYPE": Struct("lfNestType",
                 Padding(2),
@@ -866,6 +871,8 @@ subStruct = Struct("substructs",
             ),
         },
     ),
+    Peek(ULInt8("_pad")),
+    PadAlign,
 )
 
 lfFieldList = Struct("lfFieldList",
@@ -1157,6 +1164,7 @@ def fix_value(leaf):
 
     This function normalizes the structure to just the value and the name.
     The value is named according to the string in _value_name.
+
     """
     if not hasattr(leaf, 'value'): return
     if leaf.value.value_or_type < leaf_type._encode("LF_CHAR",{}):
