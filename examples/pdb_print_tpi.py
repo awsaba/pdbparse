@@ -61,16 +61,19 @@ base_type_size = {
 
 def get_size(lf):
     if isinstance(lf,str):
-        return base_type_size[lf]
-    elif (lf.leaf_type == "LF_STRUCTURE" or
-          lf.leaf_type == "LF_ARRAY" or
-          lf.leaf_type == "LF_UNION"):
-        return lf.size
+        return base_type_size.get(lf, -1)
     elif lf.leaf_type == "LF_POINTER":
         return ARCH_PTR_SIZE
     elif lf.leaf_type == "LF_MODIFIER":
         return get_size(lf.modified_type)
-    else: return -1
+    elif hasattr(lf, 'element_type'):
+        return get_size(lf.element_type)
+    elif hasattr(lf, 'utype'):
+        return get_size(lf.utype)
+    elif hasattr(lf, 'size'):
+        return lf.size
+    else:
+        return -1
 
 def get_tpname(lf):
     if isinstance(lf, str):
@@ -92,7 +95,7 @@ def bit_str(bitf):
 
 def arr_str(arr):
     tpname = get_tpname(arr.element_type)
-    count = arr.size / get_size(arr.element_type) 
+    count = arr.size / get_size(arr.element_type)
     return "array %s[%d]" % (tpname, count)
 
 def mod_str(mod):
@@ -111,12 +114,23 @@ def proc_str(proc):
     return "function(%s)" % ", ".join(argstrs)
 
 def memb_str(memb):
-    off = memb.offset
-    tpname = get_tpname(memb.index)
-    return "%#x: %s (%s)" % (off, memb.name, tpname)
+    if "offset" in memb:
+        off = memb.offset
+    else:
+        off = 0
+    if "name" in memb:
+        name = memb.name
+    else:
+        name = "NOT NAMED"
+    if "index" in memb:
+        tpname = get_tpname(memb.index)
+    else:
+        tpname = "NO TYPE INDEX"
+    return "%#x: %s (%s)" % (off, name, tpname)
 
 def struct_pretty_str(lf):
-    return (lf.name + (", %#x bytes\n    " % lf.size) + 
+    return (lf.name + (", %#x bytes, %x pad\n    " %
+                (lf.size if lf.size is not None else 0, lf._pad if lf._pad is not None else 0)) +
             "\n    ".join(memb_str(s) for s in lf.fieldlist.substructs))
 
 def enum_pretty_str(enum):
@@ -124,7 +138,7 @@ def enum_pretty_str(enum):
     utypename = get_tpname(enum.utype)
     for e in enum.fieldlist.substructs:
         enumerated.append("%s = %d" % (e.name, e.enum_value))
-    return (enum.name + (" (%s)\n    " % utypename) + 
+    return (enum.name + (" (%s)\n    " % utypename) +
             "\n    ".join(enumerated))
 
 pdb = pdbparse.parse(sys.argv[1])

@@ -664,7 +664,7 @@ leaf_type = Enum(ULInt16("leaf_type"),
     LF_UTF8STRING       = 0x801b,
 
     LF_REAL16           = 0x801c,
-    
+
     LF_PAD0             = 0xf0,
     LF_PAD1             = 0xf1,
     LF_PAD2             = 0xf2,
@@ -748,9 +748,14 @@ CV_property = BitStruct("prop",
     Flag("ctor"),
     Flag("packed"),
 
-    BitField("reserved", 7, swapped=True),
+    BitField("mocom", 2),
+    Flag("intrinsic", 1),
+    BitField("hfa", 2),
+    Flag("sealed"),
+    Flag("hasuniquename"),
     Flag("scoped"),
 )
+
 
 def val(name):
     return Struct("value",
@@ -904,6 +909,8 @@ lfStructure = Struct("lfStructure",
     ULInt32("derived"),
     ULInt32("vshape"),
     val("size"),
+    If(lambda ctx: ctx.prop["hasuniquename"],
+       CString("unique_name")),
     Peek(ULInt8("_pad")),
     PadAlign,
 )
@@ -1025,7 +1032,7 @@ lfMFunc = Struct("lfMFunc",
     SLInt32("thisadjust"),
     Peek(ULInt8("_pad")),
     PadAlign,
-) 
+)
 
 lfVTShape = Struct("lfVTShape",
     ULInt16("count"),
@@ -1125,16 +1132,16 @@ def merge_subcon(parent, subattr):
 
 def fix_value(leaf):
     """Translate the value member of a leaf node into a nicer form.
-    
+
     Due to limitations in construct, the inital parsed form of a value is:
-    
+
     value
       `- _value_name
       `- value_or_type
       `- name_or_val
 
-    OR 
-    
+    OR
+
     value
       `- _value_name
       `- value_or_type
@@ -1162,7 +1169,7 @@ def resolve_typerefs(leaf, types, min):
     corresponding type (base type or type defined in the TPI stream). The
     dictionary type_refs is used to determine which fields in the leaf node
     are references.
-    
+
     leaf: the leaf node to convert
     types: a dictionary of index->type mappings
     min: the value of tpi_min; that is, the lowest type index in the stream
@@ -1215,7 +1222,7 @@ def parse_stream(fp, unnamed_hack=True, elim_fwdrefs=True):
 
     """
     tpi_stream = TPIStream.parse_stream(fp)
-    
+
     # Postprocessing
     # 1. Index the types
     tpi_stream.types = dict(
@@ -1247,12 +1254,12 @@ def parse_stream(fp, unnamed_hack=True, elim_fwdrefs=True):
     min = tpi_stream.TPIHeader.ti_min
     for i in types:
         if types[i].leaf_type == "LF_FIELDLIST":
-            types[i].substructs = ListContainer([ 
+            types[i].substructs = ListContainer([
                 resolve_typerefs(t, types, min) for t in types[i].substructs
             ])
         else:
             types[i] = resolve_typerefs(types[i], types, min)
-    
+
     # 5. Standardize v2 leaf names to v7 convention
     for i in types:
         rename_2_7(types[i])
@@ -1278,7 +1285,7 @@ def parse_stream(fp, unnamed_hack=True, elim_fwdrefs=True):
         # Change any references to the fwdref to point to the real type
         for i in types:
             if types[i].leaf_type == "LF_FIELDLIST":
-                types[i].substructs = ListContainer([ 
+                types[i].substructs = ListContainer([
                     merge_fwdrefs(t, types, fwdref_map) for t in types[i].substructs
                 ])
             else:
@@ -1297,7 +1304,7 @@ def parse_stream(fp, unnamed_hack=True, elim_fwdrefs=True):
 
 def parse(data, unnamed_hack=True, elim_fwdrefs=True):
     return parse_stream(BytesIO(data), unnamed_hack, elim_fwdrefs)
-    
+
 if __name__ == "__main__":
     import sys
     import time
